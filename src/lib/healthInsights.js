@@ -29,6 +29,39 @@ const URGENT_PATTERNS = [
   "unresponsive",
 ];
 
+import { RED_FLAGS } from "../config/clinicalConfig";
+
+export function detectRedFlags(onboarding = {}, latestTracking = {}) {
+  const trackingText =
+    `${latestTracking?.symptomsNote || ""} ${latestTracking?.notes || ""}`.toLowerCase();
+  const foundInTracking = mergeKeywordMatches(
+    [trackingText],
+    RED_FLAGS.concat(URGENT_PATTERNS),
+  );
+  const foundInOnboarding = [];
+
+  // Check onboarding free-text fields if present
+  const onboardingText =
+    `${onboarding?.notes || ""} ${onboarding?.symptomsNote || ""} ${onboarding?.medicalHistory || ""}`.toLowerCase();
+  if (onboardingText) {
+    foundInOnboarding.push(
+      ...mergeKeywordMatches(
+        [onboardingText],
+        RED_FLAGS.concat(URGENT_PATTERNS),
+      ),
+    );
+  }
+
+  const matches = Array.from(
+    new Set([...foundInTracking, ...foundInOnboarding]),
+  );
+
+  return {
+    found: matches.length > 0,
+    matches,
+  };
+}
+
 function toNumber(value) {
   if (value === "" || value === null || value === undefined) {
     return null;
@@ -99,6 +132,8 @@ export function calculateRiskAssessment(onboarding, latestTracking) {
     : [];
   const trackingText =
     `${latestTracking?.symptomsNote || ""} ${latestTracking?.notes || ""}`.toLowerCase();
+
+  const redFlagResult = detectRedFlags(onboarding, latestTracking);
 
   let diabetesScore = 0;
   const diabetesReasons = [];
@@ -215,11 +250,15 @@ export function calculateRiskAssessment(onboarding, latestTracking) {
     );
   }
 
+  if (redFlagResult.found) {
+    calciumReasons.push(
+      `Red-flag symptoms detected: ${redFlagResult.matches.join(", ")}`,
+    );
+  }
+
   const calciumLevel = scoreToLevel(calciumScore);
   const urgent =
-    hasAnyKeyword(trackingText, URGENT_PATTERNS) ||
-    diabetesLevel === "high" ||
-    calciumLevel === "high";
+    redFlagResult.found || diabetesLevel === "high" || calciumLevel === "high";
 
   const overallLevel =
     diabetesLevel === "high" || calciumLevel === "high"
@@ -235,6 +274,7 @@ export function calculateRiskAssessment(onboarding, latestTracking) {
     diabetesScore,
     calciumScore,
     urgent,
+    urgentMatches: redFlagResult.matches,
     diabetesReasons,
     calciumReasons,
     diabetesNextSteps: buildNextSteps(diabetesLevel, "diabetes"),

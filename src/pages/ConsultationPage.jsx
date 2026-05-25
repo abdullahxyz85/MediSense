@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { PageShell } from "../components/layout/PageShell";
 import { useUserProfileData } from "../hooks/useUserProfileData";
+import { SafetyBanner } from "../components/SafetyBanner";
 import {
   askGroqChat,
   buildGroqMessages,
@@ -231,6 +232,7 @@ export function ConsultationPage({ authUser, authLoading }) {
   return (
     <PageShell authUser={authUser}>
       <main className="consultation-page">
+        <SafetyBanner />
         <section className="consultation-card">
           <div className="risk-head">
             <p className="auth-kicker">AI consultation</p>

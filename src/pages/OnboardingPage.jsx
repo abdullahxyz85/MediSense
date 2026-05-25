@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { PageShell } from "../components/layout/PageShell";
 import { ProfileOnboardingForm } from "../components/onboarding/ProfileOnboardingForm";
+import { SafetyBanner } from "../components/SafetyBanner";
 
 export function OnboardingPage({ authUser, authLoading }) {
   const navigate = useNavigate();
@@ -15,6 +16,7 @@ export function OnboardingPage({ authUser, authLoading }) {
   return (
     <PageShell authUser={authUser}>
       <main className="onboarding-page">
+        <SafetyBanner />
         <section className="onboarding-hero">
           <p className="auth-kicker">Step 1 of the MVP</p>
           <h1>

@@ -23,6 +23,7 @@ import { PageShell } from "./components/layout/PageShell";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { RiskScreeningPage } from "./pages/RiskScreeningPage";
 import { ConsultationPage } from "./pages/ConsultationPage";
+import { EmergencyPage } from "./pages/EmergencyPage";
 
 const features = [
   {
@@ -1243,6 +1244,7 @@ function AppRoutes() {
           <ConsultationPage authUser={authUser} authLoading={authLoading} />
         }
       />
+      <Route path="/emergency" element={<EmergencyPage authUser={authUser} />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
