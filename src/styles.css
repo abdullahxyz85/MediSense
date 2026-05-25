@@ -2456,3 +2456,104 @@ a:active,
     padding: 22px;
   }
 }
+
+/* Mobile polish: tighter paddings, touch targets, and font clamping */
+@media (max-width: 480px) {
+  html {
+    font-size: 14px;
+  }
+
+  .site-shell {
+    padding: 12px 12px 20px;
+    width: calc(100% - 16px);
+  }
+
+  .topbar {
+    padding: 10px 10px;
+    border-radius: 12px;
+  }
+
+  .brand-text strong {
+    font-size: 1rem;
+  }
+
+  .hero h1 {
+    font-size: clamp(1.4rem, 8.5vw, 2.2rem);
+    line-height: 1.08;
+    white-space: normal;
+  }
+  .hero-copy {
+    font-size: 0.96rem;
+    padding: 0 2px;
+  }
+
+  /* Make primary/ghost buttons full-width and larger for touch */
+  .primary-button,
+  .ghost-button,
+  .login-button,
+  .nav-button {
+    width: 100%;
+    min-height: 48px;
+    padding: 12px 14px;
+    font-size: 1rem;
+  }
+
+  /* Form inputs and textareas get larger touch targets */
+  input,
+  textarea,
+  select,
+  .auth-field input,
+  .auth-field textarea,
+  .auth-field select {
+    width: 100%;
+    min-height: 52px;
+    font-size: 1rem;
+    padding: 10px 12px;
+  }
+
+  /* Cards and panels stretch full width and reduce gaps */
+  .dashboard-card,
+  .dashboard-main-card,
+  .dashboard-side-card,
+  .risk-card,
+  .risk-summary,
+  .consultation-panel,
+  .daily-card {
+    padding: 18px;
+    gap: 10px;
+  }
+
+  .risk-head h1 {
+    font-size: 1.6rem;
+  }
+
+  /* Prevent overflow from hero lighting elements */
+  .hero::before,
+  .hero::after,
+  .topbar::before {
+    width: 120%;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
+@media (max-width: 375px) {
+  /* Extra-tight mobile adjustments for small phones */
+  html {
+    font-size: 13px;
+  }
+  .site-shell {
+    padding: 10px 10px 18px;
+  }
+  .brand-img,
+  .hero-brand-img {
+    width: 40px;
+    height: 40px;
+  }
+  .hero h1 {
+    font-size: clamp(1.2rem, 8vw, 1.9rem);
+  }
+  .dashboard-grid {
+    gap: 12px;
+  }
+}
