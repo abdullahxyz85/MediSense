@@ -3,6 +3,7 @@ import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { Link, useNavigate } from "react-router-dom";
 import { db } from "../firebase";
 import { PageShell } from "../components/layout/PageShell";
+import { SafetyBanner } from "../components/SafetyBanner";
 import { useUserProfileData } from "../hooks/useUserProfileData";
 import { calculateRiskAssessment } from "../lib/healthInsights";
 
@@ -89,6 +90,7 @@ export function RiskScreeningPage({ authUser, authLoading }) {
   return (
     <PageShell authUser={authUser}>
       <main className="risk-page">
+        <SafetyBanner />
         <section className="risk-card">
           <div className="risk-head">
             <p className="auth-kicker">Risk screening</p>
@@ -194,6 +196,33 @@ export function RiskScreeningPage({ authUser, authLoading }) {
                     Some symptoms or readings suggest you should get in-person
                     medical help soon.
                   </span>
+
+                  {assessment.urgentMatches &&
+                    assessment.urgentMatches.length > 0 && (
+                      <div className="urgent-matches">
+                        <p>Detected urgent signs:</p>
+                        <ul>
+                          {assessment.urgentMatches.map((m) => (
+                            <li key={m}>{m}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                  <div className="urgent-actions">
+                    <Link className="primary-button" to="/emergency">
+                      Seek urgent care
+                    </Link>
+                    <button
+                      className="ghost-button"
+                      type="button"
+                      onClick={() =>
+                        window.scrollTo({ top: 0, behavior: "smooth" })
+                      }
+                    >
+                      Back to top
+                    </button>
+                  </div>
                 </div>
               )}
 
