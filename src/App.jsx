@@ -1244,7 +1244,10 @@ function AppRoutes() {
           <ConsultationPage authUser={authUser} authLoading={authLoading} />
         }
       />
-      <Route path="/emergency" element={<EmergencyPage authUser={authUser} />} />
+      <Route
+        path="/emergency"
+        element={<EmergencyPage authUser={authUser} />}
+      />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
