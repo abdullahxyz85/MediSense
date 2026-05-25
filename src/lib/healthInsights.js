@@ -166,7 +166,7 @@ export function calculateRiskAssessment(onboarding, latestTracking) {
 
   if (glucoseValue !== null) {
     if (glucoseValue >= 250) {
-      diabetesScore += 4;
+      diabetesScore += 5;
       diabetesReasons.push(`Glucose reading is very high (${glucoseValue})`);
     } else if (glucoseValue >= 180) {
       diabetesScore += 3;
@@ -179,7 +179,7 @@ export function calculateRiskAssessment(onboarding, latestTracking) {
 
   if (hba1cValue !== null) {
     if (hba1cValue >= 6.5) {
-      diabetesScore += 4;
+      diabetesScore += 5;
       diabetesReasons.push(`HbA1c is in the diabetes range (${hba1cValue})`);
     } else if (hba1cValue >= 5.7) {
       diabetesScore += 2;

@@ -1,14 +1,24 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   GoogleAuthProvider,
+  EmailAuthProvider,
   createUserWithEmailAndPassword,
+  deleteUser,
   onAuthStateChanged,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
   updateProfile,
 } from "firebase/auth";
-import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import {
+  deleteDoc,
+  doc,
+  getDoc,
+  serverTimestamp,
+  setDoc,
+} from "firebase/firestore";
 import {
   BrowserRouter,
   Navigate,
@@ -20,10 +30,32 @@ import {
 } from "react-router-dom";
 import { auth, db } from "./firebase";
 import { PageShell } from "./components/layout/PageShell";
-import { OnboardingPage } from "./pages/OnboardingPage";
-import { RiskScreeningPage } from "./pages/RiskScreeningPage";
-import { ConsultationPage } from "./pages/ConsultationPage";
-import { EmergencyPage } from "./pages/EmergencyPage";
+import { buildClinicianSummary, buildExportPayload } from "./lib/privacyTools";
+import { calculateRiskAssessment } from "./lib/healthInsights";
+
+const OnboardingPage = lazy(() =>
+  import("./pages/OnboardingPage").then((module) => ({
+    default: module.OnboardingPage,
+  })),
+);
+
+const RiskScreeningPage = lazy(() =>
+  import("./pages/RiskScreeningPage").then((module) => ({
+    default: module.RiskScreeningPage,
+  })),
+);
+
+const ConsultationPage = lazy(() =>
+  import("./pages/ConsultationPage").then((module) => ({
+    default: module.ConsultationPage,
+  })),
+);
+
+const EmergencyPage = lazy(() =>
+  import("./pages/EmergencyPage").then((module) => ({
+    default: module.EmergencyPage,
+  })),
+);
 
 const features = [
   {
@@ -88,6 +120,88 @@ const stats = [
   { value: "6", label: "feature cards" },
   { value: "3", label: "step flow" },
 ];
+
+function downloadJson(filename, payload) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json",
+  });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+function downloadText(filename, content) {
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+async function reauthenticateForSensitiveAction(currentUser) {
+  if (!currentUser) {
+    throw new Error("No signed-in user found.");
+  }
+
+  const providerIds = currentUser.providerData.map(
+    (provider) => provider.providerId,
+  );
+
+  if (providerIds.includes("google.com")) {
+    const provider = new GoogleAuthProvider();
+    await reauthenticateWithPopup(currentUser, provider);
+    return;
+  }
+
+  if (providerIds.includes("password")) {
+    const password = window.prompt(
+      "Re-enter your password to confirm account deletion:",
+    );
+
+    if (!password) {
+      throw new Error("Reauthentication cancelled.");
+    }
+
+    if (!currentUser.email) {
+      throw new Error("No email found for this account.");
+    }
+
+    const credential = EmailAuthProvider.credential(
+      currentUser.email,
+      password,
+    );
+    await reauthenticateWithCredential(currentUser, credential);
+    return;
+  }
+
+  throw new Error("This sign-in method does not support deletion here.");
+}
+
+async function deleteAccountData({ currentUser, userRecord }) {
+  if (!db) {
+    throw new Error("Firestore is not configured yet.");
+  }
+
+  await deleteDoc(doc(db, "users", currentUser.uid));
+
+  const exportPayload = buildExportPayload({
+    authUser: currentUser,
+    userRecord,
+  });
+
+  return exportPayload;
+}
 
 function useAuthSession() {
   const [authUser, setAuthUser] = useState(null);
@@ -534,6 +648,8 @@ function DashboardPage({ authUser, authLoading }) {
   const [pending, setPending] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState("");
+  const [privacyError, setPrivacyError] = useState("");
+  const [privacyNotice, setPrivacyNotice] = useState("");
   const [userRecord, setUserRecord] = useState(null);
 
   useEffect(() => {
@@ -601,6 +717,10 @@ function DashboardPage({ authUser, authLoading }) {
   const preferredName =
     onboarding?.preferredName || authUser?.displayName || "there";
   const profileReady = Boolean(userRecord?.profileComplete && onboarding);
+  const assessment = useMemo(
+    () => calculateRiskAssessment(onboarding, latestTracking),
+    [latestTracking, onboarding],
+  );
 
   const keyFacts = [
     { label: "Age", value: onboarding?.age || "Not set" },
@@ -629,6 +749,94 @@ function DashboardPage({ authUser, authLoading }) {
       setPending(true);
       await signOut(auth);
       navigate("/", { replace: true });
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function handleExportData() {
+    if (!authUser) {
+      return;
+    }
+
+    try {
+      setPending(true);
+      setPrivacyError("");
+      setPrivacyNotice("");
+
+      const payload = buildExportPayload({ authUser, userRecord });
+      const filename = `medisense-export-${authUser.uid}-${payload.exportedAt.slice(0, 10)}.json`;
+      downloadJson(filename, payload);
+      setPrivacyNotice("Your data export is downloading.");
+    } catch (exportError) {
+      setPrivacyError(
+        exportError instanceof Error
+          ? exportError.message
+          : "Could not export your data.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function handleExportClinicalSummary() {
+    if (!authUser) {
+      return;
+    }
+
+    try {
+      setPending(true);
+      setPrivacyError("");
+      setPrivacyNotice("");
+
+      const summary = buildClinicianSummary({
+        authUser,
+        userRecord,
+        assessment,
+      });
+      const filename = `medisense-clinician-summary-${authUser.uid}-${new Date().toISOString().slice(0, 10)}.txt`;
+      downloadText(filename, summary);
+      setPrivacyNotice("Your clinician summary is downloading.");
+    } catch (summaryError) {
+      setPrivacyError(
+        summaryError instanceof Error
+          ? summaryError.message
+          : "Could not export the clinician summary.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function handleDeleteAccount() {
+    if (!auth || !auth.currentUser) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "This will permanently delete your account and saved MediSense data. Continue?",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setPending(true);
+      setPrivacyError("");
+      setPrivacyNotice("");
+
+      const currentUser = auth.currentUser;
+      await reauthenticateForSensitiveAction(currentUser);
+      await deleteAccountData({ currentUser, userRecord });
+      await deleteUser(currentUser);
+      navigate("/", { replace: true });
+    } catch (deleteError) {
+      setPrivacyError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Could not delete your account right now.",
+      );
     } finally {
       setPending(false);
     }
@@ -823,6 +1031,47 @@ function DashboardPage({ authUser, authLoading }) {
                 >
                   Open consultation
                 </Link>
+              </article>
+              <article className="dashboard-next-item dashboard-privacy-item">
+                <h3>
+                  Privacy <span className="accent-text">controls</span>
+                </h3>
+                <p>
+                  Download a JSON copy of your profile and daily tracking, or
+                  permanently delete your account and stored data.
+                </p>
+                {privacyNotice && (
+                  <p className="dashboard-note privacy-note">{privacyNotice}</p>
+                )}
+                {privacyError && (
+                  <div className="auth-alert error">{privacyError}</div>
+                )}
+                <div className="privacy-action-row">
+                  <button
+                    className="ghost-button dashboard-inline-button"
+                    type="button"
+                    onClick={handleExportData}
+                    disabled={pending || profileLoading}
+                  >
+                    Export my data
+                  </button>
+                  <button
+                    className="ghost-button dashboard-inline-button"
+                    type="button"
+                    onClick={handleExportClinicalSummary}
+                    disabled={pending || profileLoading}
+                  >
+                    Export clinician summary
+                  </button>
+                  <button
+                    className="ghost-button dashboard-inline-button danger-button"
+                    type="button"
+                    onClick={handleDeleteAccount}
+                    disabled={pending || profileLoading}
+                  >
+                    Delete account
+                  </button>
+                </div>
               </article>
             </div>
           </aside>
@@ -1192,64 +1441,79 @@ function AppRoutes() {
   const { authUser, authLoading } = useAuthSession();
 
   return (
-    <Routes>
-      <Route path="/" element={<LandingPage authUser={authUser} />} />
-      <Route
-        path="/login"
-        element={
-          <AuthPage
-            mode="login"
-            authUser={authUser}
-            authLoading={authLoading}
-          />
-        }
-      />
-      <Route
-        path="/onboarding"
-        element={
-          <OnboardingPage authUser={authUser} authLoading={authLoading} />
-        }
-      />
-      <Route
-        path="/signup"
-        element={
-          <AuthPage
-            mode="signup"
-            authUser={authUser}
-            authLoading={authLoading}
-          />
-        }
-      />
-      <Route
-        path="/dashboard"
-        element={
-          <DashboardPage authUser={authUser} authLoading={authLoading} />
-        }
-      />
-      <Route
-        path="/tracking"
-        element={
-          <DailyTrackingPage authUser={authUser} authLoading={authLoading} />
-        }
-      />
-      <Route
-        path="/risk-screening"
-        element={
-          <RiskScreeningPage authUser={authUser} authLoading={authLoading} />
-        }
-      />
-      <Route
-        path="/consultation"
-        element={
-          <ConsultationPage authUser={authUser} authLoading={authLoading} />
-        }
-      />
-      <Route
-        path="/emergency"
-        element={<EmergencyPage authUser={authUser} />}
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <Suspense
+      fallback={
+        <main className="app-loading-screen">
+          <div className="app-loading-card">
+            <p className="auth-kicker">Loading MediSense</p>
+            <h1>
+              Preparing your <span className="accent-text">screening</span>{" "}
+              tools
+            </h1>
+            <p>Please wait a moment while the next page loads.</p>
+          </div>
+        </main>
+      }
+    >
+      <Routes>
+        <Route path="/" element={<LandingPage authUser={authUser} />} />
+        <Route
+          path="/login"
+          element={
+            <AuthPage
+              mode="login"
+              authUser={authUser}
+              authLoading={authLoading}
+            />
+          }
+        />
+        <Route
+          path="/onboarding"
+          element={
+            <OnboardingPage authUser={authUser} authLoading={authLoading} />
+          }
+        />
+        <Route
+          path="/signup"
+          element={
+            <AuthPage
+              mode="signup"
+              authUser={authUser}
+              authLoading={authLoading}
+            />
+          }
+        />
+        <Route
+          path="/dashboard"
+          element={
+            <DashboardPage authUser={authUser} authLoading={authLoading} />
+          }
+        />
+        <Route
+          path="/tracking"
+          element={
+            <DailyTrackingPage authUser={authUser} authLoading={authLoading} />
+          }
+        />
+        <Route
+          path="/risk-screening"
+          element={
+            <RiskScreeningPage authUser={authUser} authLoading={authLoading} />
+          }
+        />
+        <Route
+          path="/consultation"
+          element={
+            <ConsultationPage authUser={authUser} authLoading={authLoading} />
+          }
+        />
+        <Route
+          path="/emergency"
+          element={<EmergencyPage authUser={authUser} />}
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }
 

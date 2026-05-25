@@ -1,8 +1,17 @@
 import { Link } from "react-router-dom";
 import { PageShell } from "../components/layout/PageShell";
 import { EMERGENCY_MSG, DISCLAIMER_TEXT } from "../config/clinicalConfig";
+import { useUserProfileData } from "../hooks/useUserProfileData";
+import { getEmergencyNumber } from "../lib/emergencyNumbers";
 
 export function EmergencyPage({ authUser }) {
+  const { onboarding } = useUserProfileData(authUser, false);
+  const country =
+    onboarding?.countryRegion ||
+    onboarding?.country ||
+    onboarding?.locationType;
+  const tel = getEmergencyNumber(country);
+
   return (
     <PageShell authUser={authUser}>
       <main className="emergency-page">
@@ -12,8 +21,8 @@ export function EmergencyPage({ authUser }) {
           <p className="emergency-note">{DISCLAIMER_TEXT}</p>
 
           <div className="emergency-actions">
-            <a href="tel:112" className="primary-button">
-              Call local emergency services
+            <a href={`tel:${tel}`} className="primary-button">
+              Call local emergency services ({tel})
             </a>
             <Link className="ghost-button" to="/dashboard">
               Back to dashboard
